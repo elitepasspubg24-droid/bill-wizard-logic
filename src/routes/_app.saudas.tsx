@@ -100,10 +100,10 @@ function SaudasPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label>Link Purchase Bill (optional)</Label>
-              <Select value={linkedBill} onValueChange={setLinkedBill}>
+              <Select value={linkedBill || "none"} onValueChange={(v) => setLinkedBill(v === "none" ? "" : v)}>
                 <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">— none —</SelectItem>
+                  <SelectItem value="none">— none —</SelectItem>
                   {bills.data?.filter((b: any) => b.type === "purchase").map((b: any) => (
                     <SelectItem key={b.id} value={b.id}>
                       {b.bill_no ?? "(no #)"} — {b.vendor ?? "?"} — {b.bill_date ?? ""}
