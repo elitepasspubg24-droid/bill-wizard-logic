@@ -116,6 +116,35 @@ export type Database = {
         }
         Relationships: []
       }
+      factory_rate_history: {
+        Row: {
+          basic_rate: number
+          changed_at: string
+          factory_id: string
+          id: string
+        }
+        Insert: {
+          basic_rate: number
+          changed_at?: string
+          factory_id: string
+          id?: string
+        }
+        Update: {
+          basic_rate?: number
+          changed_at?: string
+          factory_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "factory_rate_history_factory_id_fkey"
+            columns: ["factory_id"]
+            isOneToOne: false
+            referencedRelation: "factories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       items: {
         Row: {
           available_qty: number
@@ -240,6 +269,41 @@ export type Database = {
             columns: ["linked_bill_id"]
             isOneToOne: false
             referencedRelation: "bills"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      section_rate_history: {
+        Row: {
+          adder: number
+          changed_at: string
+          id: string
+          party_basic: number
+          sauda_basic: number
+          section_id: string
+        }
+        Insert: {
+          adder: number
+          changed_at?: string
+          id?: string
+          party_basic: number
+          sauda_basic: number
+          section_id: string
+        }
+        Update: {
+          adder?: number
+          changed_at?: string
+          id?: string
+          party_basic?: number
+          sauda_basic?: number
+          section_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "section_rate_history_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "sections"
             referencedColumns: ["id"]
           },
         ]
