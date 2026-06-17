@@ -41,28 +41,27 @@ function SaudasPage() {
   const save = useMutation({
     mutationFn: async () => {
       if (!party) throw new Error("Party name required");
+      if (!basic || Number(basic) <= 0) throw new Error("Sauda basic rate required");
+      const validRows = rows.filter((r) => Number(r.qty) > 0 && Number(r.rate) > 0);
+      if (!validRows.length) throw new Error("At least one row with qty and rate required");
       const { data: s, error } = await supabase.from("saudas").insert({
         party_name: party,
         factory_id: factoryId || null,
-        sauda_basic: Number(basic) || 0,
+        sauda_basic: Number(basic),
         sauda_date: date,
         linked_bill_id: linkedBill || null,
         notes: notes || null,
       }).select().single();
       if (error) throw error;
-      const sItems = rows
-        .filter((r) => r.raw_name || r.item_id)
-        .map((r) => ({
-          sauda_id: s.id,
-          item_id: r.item_id,
-          raw_name: r.raw_name || items.data?.find((i) => i.id === r.item_id)?.name || "",
-          qty: Number(r.qty) || 0,
-          rate: Number(r.rate) || 0,
-        }));
-      if (sItems.length) {
-        const { error: e2 } = await supabase.from("sauda_items").insert(sItems);
-        if (e2) throw e2;
-      }
+      const sItems = validRows.map((r) => ({
+        sauda_id: s.id,
+        item_id: r.item_id,
+        raw_name: r.raw_name || items.data?.find((i) => i.id === r.item_id)?.name || "",
+        qty: Number(r.qty),
+        rate: Number(r.rate),
+      }));
+      const { error: e2 } = await supabase.from("sauda_items").insert(sItems);
+      if (e2) throw e2;
     },
     onSuccess: () => {
       toast.success("Sauda saved");
