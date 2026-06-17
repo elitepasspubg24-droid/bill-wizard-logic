@@ -1,0 +1,15 @@
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.factories, public.sections, public.items, public.bills, public.bill_items, public.saudas, public.sauda_items TO anon;
+DROP POLICY "auth all" ON public.factories;
+DROP POLICY "auth all" ON public.sections;
+DROP POLICY "auth all" ON public.items;
+DROP POLICY "auth all" ON public.bills;
+DROP POLICY "auth all" ON public.bill_items;
+DROP POLICY "auth all" ON public.saudas;
+DROP POLICY "auth all" ON public.sauda_items;
+CREATE POLICY "open" ON public.factories FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "open" ON public.sections FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "open" ON public.items FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "open" ON public.bills FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "open" ON public.bill_items FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "open" ON public.saudas FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "open" ON public.sauda_items FOR ALL USING (true) WITH CHECK (true);
