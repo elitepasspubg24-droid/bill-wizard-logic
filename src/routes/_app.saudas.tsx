@@ -433,13 +433,14 @@ function ModifySaudaDialog({ sauda, onClose, onSaved }: { sauda: any | null; onC
   const [date, setDate] = useState("");
   const [notes, setNotes] = useState("");
 
-  // Reset when opened
-  if (sauda && party === "" && basic === "" && date === "") {
-    setParty(sauda.party_name ?? "");
-    setBasic(String(sauda.sauda_basic ?? ""));
-    setDate(sauda.sauda_date ?? "");
-    setNotes(sauda.notes ?? "");
-  }
+  useEffect(() => {
+    if (sauda) {
+      setParty(sauda.party_name ?? "");
+      setBasic(String(sauda.sauda_basic ?? ""));
+      setDate(sauda.sauda_date ?? "");
+      setNotes(sauda.notes ?? "");
+    }
+  }, [sauda?.id]);
 
   const save = useMutation({
     mutationFn: async () => {
