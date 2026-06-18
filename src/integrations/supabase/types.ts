@@ -225,6 +225,51 @@ export type Database = {
           },
         ]
       }
+      sauda_uplifts: {
+        Row: {
+          bill_id: string | null
+          created_at: string
+          id: string
+          kind: string
+          note: string | null
+          qty: number
+          sauda_id: string
+        }
+        Insert: {
+          bill_id?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          note?: string | null
+          qty: number
+          sauda_id: string
+        }
+        Update: {
+          bill_id?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          note?: string | null
+          qty?: number
+          sauda_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sauda_uplifts_bill_id_fkey"
+            columns: ["bill_id"]
+            isOneToOne: false
+            referencedRelation: "bills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sauda_uplifts_sauda_id_fkey"
+            columns: ["sauda_id"]
+            isOneToOne: false
+            referencedRelation: "saudas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       saudas: {
         Row: {
           created_at: string
@@ -236,6 +281,7 @@ export type Database = {
           party_name: string
           sauda_basic: number
           sauda_date: string
+          status: string
         }
         Insert: {
           created_at?: string
@@ -247,6 +293,7 @@ export type Database = {
           party_name: string
           sauda_basic?: number
           sauda_date?: string
+          status?: string
         }
         Update: {
           created_at?: string
@@ -258,6 +305,7 @@ export type Database = {
           party_name?: string
           sauda_basic?: number
           sauda_date?: string
+          status?: string
         }
         Relationships: [
           {

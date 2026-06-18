@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { fetchSaudas, fetchBills, fetchFactories, fetchItems } from "@/lib/queries";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/saudas")({
@@ -149,8 +151,14 @@ function SaudasPage() {
 }
 
 function SaudasByCategory({ data, onChanged }: { data: any[]; onChanged: () => void }) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [editing, setEditing] = useState<any | null>(null);
+  const [adjustDelta, setAdjustDelta] = useState<Record<string, string>>({});
+  const [adjustNote, setAdjustNote] = useState<Record<string, string>>({});
+
   const del = useMutation({
     mutationFn: async (id: string) => {
+      await supabase.from("sauda_uplifts").delete().eq("sauda_id", id);
       await supabase.from("sauda_items").delete().eq("sauda_id", id);
       const { error } = await supabase.from("saudas").delete().eq("id", id);
       if (error) throw error;
@@ -159,12 +167,47 @@ function SaudasByCategory({ data, onChanged }: { data: any[]; onChanged: () => v
     onError: (e: any) => toast.error(e.message),
   });
 
-  const adjust = useMutation({
-    mutationFn: async ({ id, lifted_qty }: { id: string; lifted_qty: number }) => {
-      const { error } = await supabase.from("saudas").update({ lifted_qty }).eq("id", id);
+  // Insert an uplift (positive = lifted, negative = reversal) and update lifted_qty cache
+  const uplift = useMutation({
+    mutationFn: async (p: { sauda: any; delta: number; note?: string; kind?: string }) => {
+      if (!p.delta) throw new Error("Enter a non-zero quantity");
+      const totalQty = (p.sauda.sauda_items ?? []).reduce((a: number, i: any) => a + Number(i.qty || 0), 0);
+      const curLifted = Number(p.sauda.lifted_qty || 0);
+      const newLifted = curLifted + p.delta;
+      if (newLifted < 0) throw new Error("Cannot reduce below zero");
+      const capped = totalQty > 0 ? Math.min(totalQty, newLifted) : newLifted;
+      const { error: e1 } = await supabase.from("sauda_uplifts").insert({
+        sauda_id: p.sauda.id,
+        qty: p.delta,
+        kind: p.kind ?? "manual",
+        note: p.note || null,
+      });
+      if (e1) throw e1;
+      const { error: e2 } = await supabase
+        .from("saudas")
+        .update({
+          lifted_qty: capped,
+          status: totalQty > 0 && capped >= totalQty ? "done" : p.sauda.status === "done" ? "open" : p.sauda.status,
+        })
+        .eq("id", p.sauda.id);
+      if (e2) throw e2;
+    },
+    onSuccess: (_d, p) => {
+      toast.success(p.delta > 0 ? "Lifted" : "Reversed");
+      setAdjustDelta((m) => ({ ...m, [p.sauda.id]: "" }));
+      setAdjustNote((m) => ({ ...m, [p.sauda.id]: "" }));
+      onChanged();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const toggleDone = useMutation({
+    mutationFn: async (s: any) => {
+      const next = s.status === "done" ? "open" : "done";
+      const { error } = await supabase.from("saudas").update({ status: next }).eq("id", s.id);
       if (error) throw error;
     },
-    onSuccess: () => onChanged(),
+    onSuccess: () => { onChanged(); },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -186,85 +229,258 @@ function SaudasByCategory({ data, onChanged }: { data: any[]; onChanged: () => v
   }
 
   return (
-    <div className="space-y-4">
-      {groups.map(([cat, rows]) => (
-        <Card key={cat}>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <span>{cat}</span>
-              <Badge variant="secondary">{rows.length}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b text-left text-muted-foreground">
-                <tr>
-                  <th className="p-2">Date</th>
-                  <th className="p-2">Party</th>
-                  <th className="p-2 text-right">Basic</th>
-                  <th className="p-2 text-right">Sauda Qty</th>
-                  <th className="p-2 text-right">Lifted</th>
-                  <th className="p-2 text-right">Pending</th>
-                  <th className="p-2">Adjust</th>
-                  <th className="p-2">Linked Bill</th>
-                  <th className="p-2 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((s: any) => {
-                  const totalQty = (s.sauda_items ?? []).reduce((a: number, i: any) => a + Number(i.qty || 0), 0);
-                  const lifted = Number(s.lifted_qty || 0);
-                  const pending = Math.max(0, totalQty - lifted);
-                  const bump = (delta: number) => {
-                    const next = Math.min(totalQty, Math.max(0, lifted + delta));
-                    adjust.mutate({ id: s.id, lifted_qty: next });
-                  };
-                  return (
-                    <tr key={s.id} className="border-b last:border-0">
-                      <td className="p-2 whitespace-nowrap">{s.sauda_date}</td>
-                      <td className="p-2 font-medium">{s.party_name}</td>
-                      <td className="p-2 text-right font-mono">{s.sauda_basic}</td>
-                      <td className="p-2 text-right font-mono">{totalQty}</td>
-                      <td className="p-2 text-right font-mono">{lifted}</td>
-                      <td className="p-2 text-right font-mono font-semibold">{pending}</td>
-                      <td className="p-2">
-                        <div className="flex items-center gap-1">
-                          <Button size="sm" variant="outline" onClick={() => bump(-1)} disabled={lifted <= 0}>-</Button>
-                          <Input
-                            className="w-20 h-8 text-right"
-                            type="number"
-                            defaultValue={lifted}
-                            onBlur={(e) => {
-                              const v = Number(e.target.value);
-                              if (!Number.isNaN(v) && v !== lifted) adjust.mutate({ id: s.id, lifted_qty: Math.min(totalQty, Math.max(0, v)) });
-                            }}
-                          />
-                          <Button size="sm" variant="outline" onClick={() => bump(1)} disabled={lifted >= totalQty}>+</Button>
-                        </div>
-                      </td>
-                      <td className="p-2">
-                        {s.bills ? <Badge variant="outline">{s.bills.bill_no ?? s.bills.vendor}</Badge> : "—"}
-                      </td>
-                      <td className="p-2 text-right">
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          disabled={del.isPending}
-                          onClick={() => {
-                            if (confirm(`Delete sauda for ${s.party_name}?`)) del.mutate(s.id);
-                          }}
-                        >
-                          Delete
-                        </Button>
-                      </td>
+    <>
+      <div className="space-y-4">
+        {groups.map(([cat, rows]) => {
+          const catTotal = rows.reduce((a, s) => a + (s.sauda_items ?? []).reduce((x: number, i: any) => x + Number(i.qty || 0), 0), 0);
+          const catLifted = rows.reduce((a, s) => a + Number(s.lifted_qty || 0), 0);
+          const catPending = Math.max(0, catTotal - catLifted);
+          const openCount = rows.filter((r) => r.status !== "done").length;
+          return (
+            <Card key={cat}>
+              <CardHeader>
+                <CardTitle className="text-base flex flex-wrap items-center gap-2">
+                  <span>{cat}</span>
+                  <Badge variant="secondary">{rows.length} saudas</Badge>
+                  <Badge variant="outline">{openCount} open</Badge>
+                  <span className="text-xs font-normal text-muted-foreground ml-auto">
+                    Total {catTotal} · Lifted {catLifted} · <span className="text-foreground font-semibold">Pending {catPending}</span>
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b text-left text-muted-foreground">
+                    <tr>
+                      <th className="p-2 w-6"></th>
+                      <th className="p-2">Date</th>
+                      <th className="p-2">Party</th>
+                      <th className="p-2">Status</th>
+                      <th className="p-2 text-right">Basic</th>
+                      <th className="p-2 text-right">Qty</th>
+                      <th className="p-2 text-right">Lifted</th>
+                      <th className="p-2 text-right">Pending</th>
+                      <th className="p-2">Linked Bill</th>
+                      <th className="p-2 text-right">Actions</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+                  </thead>
+                  <tbody>
+                    {rows.map((s: any) => {
+                      const totalQty = (s.sauda_items ?? []).reduce((a: number, i: any) => a + Number(i.qty || 0), 0);
+                      const lifted = Number(s.lifted_qty || 0);
+                      const pending = Math.max(0, totalQty - lifted);
+                      const isOpen = expanded[s.id];
+                      const ups = (s.sauda_uplifts ?? []).slice().sort((a: any, b: any) => (a.created_at < b.created_at ? 1 : -1));
+                      const done = s.status === "done";
+                      return (
+                        <Fragment key={s.id}>
+                          <tr className={`border-b ${done ? "opacity-60" : ""}`}>
+                            <td className="p-2">
+                              <button onClick={() => setExpanded({ ...expanded, [s.id]: !isOpen })} className="text-muted-foreground">
+                                {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                              </button>
+                            </td>
+                            <td className="p-2 whitespace-nowrap">{s.sauda_date}</td>
+                            <td className="p-2 font-medium">
+                              {s.party_name}
+                              {s.notes && <div className="text-xs text-muted-foreground truncate max-w-[200px]">{s.notes}</div>}
+                            </td>
+                            <td className="p-2">
+                              <Badge variant={done ? "secondary" : pending === 0 ? "default" : "outline"}>
+                                {done ? "Done" : pending === 0 ? "Fulfilled" : "Open"}
+                              </Badge>
+                            </td>
+                            <td className="p-2 text-right font-mono">{s.sauda_basic}</td>
+                            <td className="p-2 text-right font-mono">{totalQty}</td>
+                            <td className="p-2 text-right font-mono">{lifted}</td>
+                            <td className="p-2 text-right font-mono font-semibold">{pending}</td>
+                            <td className="p-2">
+                              {s.bills ? <Badge variant="outline">{s.bills.bill_no ?? s.bills.vendor}</Badge> : "—"}
+                            </td>
+                            <td className="p-2 text-right">
+                              <div className="flex justify-end gap-1 flex-wrap">
+                                <Button size="sm" variant="outline" onClick={() => setEditing(s)}>Modify</Button>
+                                <Button size="sm" variant={done ? "outline" : "default"} onClick={() => toggleDone.mutate(s)}>
+                                  {done ? "Reopen" : "Done"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  disabled={del.isPending}
+                                  onClick={() => { if (confirm(`Delete sauda for ${s.party_name}?`)) del.mutate(s.id); }}
+                                >
+                                  Delete
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr className="bg-muted/30">
+                              <td></td>
+                              <td colSpan={9} className="p-3 space-y-3">
+                                <div className="grid md:grid-cols-2 gap-4">
+                                  <div>
+                                    <div className="text-xs font-semibold uppercase text-muted-foreground mb-1">Sauda Items</div>
+                                    <table className="w-full text-xs border">
+                                      <thead className="bg-background border-b">
+                                        <tr>
+                                          <th className="p-1 text-left">Item</th>
+                                          <th className="p-1 text-right">Qty</th>
+                                          <th className="p-1 text-right">Rate</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {(s.sauda_items ?? []).map((it: any) => (
+                                          <tr key={it.id} className="border-b last:border-0">
+                                            <td className="p-1">{it.raw_name || "—"}</td>
+                                            <td className="p-1 text-right font-mono">{it.qty}</td>
+                                            <td className="p-1 text-right font-mono">{it.rate}</td>
+                                          </tr>
+                                        ))}
+                                        {!s.sauda_items?.length && (
+                                          <tr><td colSpan={3} className="p-2 text-center text-muted-foreground">No items.</td></tr>
+                                        )}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-semibold uppercase text-muted-foreground mb-1">Uplift History</div>
+                                    <table className="w-full text-xs border">
+                                      <thead className="bg-background border-b">
+                                        <tr>
+                                          <th className="p-1 text-left">When</th>
+                                          <th className="p-1">Kind</th>
+                                          <th className="p-1 text-right">Qty</th>
+                                          <th className="p-1 text-left">Note</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {ups.map((u: any) => (
+                                          <tr key={u.id} className="border-b last:border-0">
+                                            <td className="p-1 whitespace-nowrap">{new Date(u.created_at).toLocaleString()}</td>
+                                            <td className="p-1"><Badge variant={u.kind === "bill" ? "default" : "secondary"}>{u.kind}</Badge></td>
+                                            <td className={`p-1 text-right font-mono ${Number(u.qty) < 0 ? "text-destructive" : ""}`}>
+                                              {Number(u.qty) > 0 ? "+" : ""}{u.qty}
+                                            </td>
+                                            <td className="p-1">{u.note ?? "—"}</td>
+                                          </tr>
+                                        ))}
+                                        {!ups.length && (
+                                          <tr><td colSpan={4} className="p-2 text-center text-muted-foreground">No uplifts yet.</td></tr>
+                                        )}
+                                      </tbody>
+                                    </table>
+                                    <div className="flex gap-1 mt-2 items-end flex-wrap">
+                                      <div className="flex-1 min-w-[120px]">
+                                        <Label className="text-xs">Adjust Qty (+/−)</Label>
+                                        <Input
+                                          className="h-8"
+                                          type="number"
+                                          placeholder="e.g. 5 or -2"
+                                          value={adjustDelta[s.id] ?? ""}
+                                          onChange={(e) => setAdjustDelta({ ...adjustDelta, [s.id]: e.target.value })}
+                                        />
+                                      </div>
+                                      <div className="flex-1 min-w-[140px]">
+                                        <Label className="text-xs">Note</Label>
+                                        <Input
+                                          className="h-8"
+                                          placeholder="optional"
+                                          value={adjustNote[s.id] ?? ""}
+                                          onChange={(e) => setAdjustNote({ ...adjustNote, [s.id]: e.target.value })}
+                                        />
+                                      </div>
+                                      <Button
+                                        size="sm"
+                                        disabled={uplift.isPending}
+                                        onClick={() => uplift.mutate({
+                                          sauda: s,
+                                          delta: Number(adjustDelta[s.id]),
+                                          note: adjustNote[s.id],
+                                        })}
+                                      >
+                                        Apply
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      <ModifySaudaDialog
+        sauda={editing}
+        onClose={() => setEditing(null)}
+        onSaved={() => { setEditing(null); onChanged(); }}
+      />
+    </>
+  );
+}
+
+function ModifySaudaDialog({ sauda, onClose, onSaved }: { sauda: any | null; onClose: () => void; onSaved: () => void }) {
+  const [party, setParty] = useState("");
+  const [basic, setBasic] = useState("");
+  const [date, setDate] = useState("");
+  const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    if (sauda) {
+      setParty(sauda.party_name ?? "");
+      setBasic(String(sauda.sauda_basic ?? ""));
+      setDate(sauda.sauda_date ?? "");
+      setNotes(sauda.notes ?? "");
+    }
+  }, [sauda?.id]);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!sauda) return;
+      const { error } = await supabase
+        .from("saudas")
+        .update({
+          party_name: party,
+          sauda_basic: Number(basic),
+          sauda_date: date,
+          notes: notes || null,
+        })
+        .eq("id", sauda.id);
+      if (error) throw error;
+    },
+    onSuccess: () => { toast.success("Updated"); reset(); onSaved(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  function reset() {
+    setParty(""); setBasic(""); setDate(""); setNotes("");
+  }
+
+  return (
+    <Dialog open={!!sauda} onOpenChange={(o) => { if (!o) { reset(); onClose(); } }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Modify Sauda</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div><Label>Party</Label><Input value={party} onChange={(e) => setParty(e.target.value)} /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label>Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+            <div><Label>Basic</Label><Input type="number" value={basic} onChange={(e) => setBasic(e.target.value)} /></div>
+          </div>
+          <div><Label>Notes</Label><Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { reset(); onClose(); }}>Cancel</Button>
+          <Button onClick={() => save.mutate()} disabled={save.isPending}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

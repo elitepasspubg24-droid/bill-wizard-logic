@@ -39,7 +39,7 @@ export async function fetchBills() {
 export async function fetchSaudas() {
   const { data, error } = await supabase
     .from("saudas")
-    .select("*, sauda_items(*), factories(name), bills:linked_bill_id(bill_no, vendor)")
+    .select("*, sauda_items(*), factories(name), bills:linked_bill_id(bill_no, vendor), sauda_uplifts(*)")
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data;
