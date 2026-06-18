@@ -122,13 +122,40 @@ function BillsPage() {
           .eq("id", id);
       }
 
-      // Optionally link the bill back to a sauda
+      // Link the bill to a sauda and record an uplift for the bill's total qty
       if (linkSaudaId && linkSaudaId !== "none") {
-        const { error } = await supabase
+        const sauda = (saudas.data as any[] | undefined)?.find((s) => s.id === linkSaudaId);
+        const billQty = rows.reduce((a, r) => a + Number(r.qty || 0), 0);
+
+        const { error: linkErr } = await supabase
           .from("saudas")
           .update({ linked_bill_id: bill.id })
           .eq("id", linkSaudaId);
-        if (error) throw error;
+        if (linkErr) throw linkErr;
+
+        if (billQty > 0) {
+          const { error: upErr } = await supabase.from("sauda_uplifts").insert({
+            sauda_id: linkSaudaId,
+            qty: billQty,
+            kind: "bill",
+            bill_id: bill.id,
+            note: `Bill ${draft.bill_no ?? bill.id.slice(0, 6)}`,
+          });
+          if (upErr) throw upErr;
+
+          const totalQty = (sauda?.sauda_items ?? []).reduce(
+            (a: number, r: any) => a + Number(r.qty || 0),
+            0,
+          );
+          const newLifted = Number(sauda?.lifted_qty ?? 0) + billQty;
+          const cappedLifted = totalQty > 0 ? Math.min(totalQty, newLifted) : newLifted;
+          const newStatus = totalQty > 0 && cappedLifted >= totalQty ? "done" : sauda?.status ?? "open";
+          const { error: sErr } = await supabase
+            .from("saudas")
+            .update({ lifted_qty: cappedLifted, status: newStatus })
+            .eq("id", linkSaudaId);
+          if (sErr) throw sErr;
+        }
       }
     },
     onSuccess: () => {
