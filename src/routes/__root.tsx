@@ -77,14 +77,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "Maa Bhavani Steel" },
+      { name: "description", content: "Daily Rate Tracker automates daily rate updates and manages purchase/sale transactions." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "Maa Bhavani Steel" },
+      { property: "og:description", content: "Daily Rate Tracker automates daily rate updates and manages purchase/sale transactions." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Maa Bhavani Steel" },
+      { name: "twitter:description", content: "Daily Rate Tracker automates daily rate updates and manages purchase/sale transactions." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/e5c31897-fac3-46f6-8d36-0b4b07e6eced/id-preview-04f3aa68--bb6dc55a-c065-41b9-bc04-31baf912474f.lovable.app-1781777048591.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/e5c31897-fac3-46f6-8d36-0b4b07e6eced/id-preview-04f3aa68--bb6dc55a-c065-41b9-bc04-31baf912474f.lovable.app-1781777048591.png" },
     ],
     links: [
       {
