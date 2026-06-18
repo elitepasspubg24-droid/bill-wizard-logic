@@ -159,6 +159,15 @@ function SaudasByCategory({ data, onChanged }: { data: any[]; onChanged: () => v
     onError: (e: any) => toast.error(e.message),
   });
 
+  const adjust = useMutation({
+    mutationFn: async ({ id, lifted_qty }: { id: string; lifted_qty: number }) => {
+      const { error } = await supabase.from("saudas").update({ lifted_qty }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => onChanged(),
+    onError: (e: any) => toast.error(e.message),
+  });
+
   const grouped = new Map<string, any[]>();
   for (const s of data) {
     const key = s.factories?.name ?? "Uncategorised";
