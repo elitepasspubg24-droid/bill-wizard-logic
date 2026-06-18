@@ -135,11 +135,11 @@ function HistoryPage() {
                   </tr>
                   <tr className="border-b bg-muted/20 text-muted-foreground">
                     {sectionCols.map((s) => (
-                      <>
-                        <th key={s.id + "a"} className="p-1 text-right border-l">Adder</th>
-                        <th key={s.id + "s"} className="p-1 text-right">Sauda</th>
-                        <th key={s.id + "p"} className="p-1 text-right">Party</th>
-                      </>
+                      <FragmentWith key={s.id}>
+                        <th className="p-1 text-right border-l">Adder</th>
+                        <th className="p-1 text-right">Sauda</th>
+                        <th className="p-1 text-right">Party</th>
+                      </FragmentWith>
                     ))}
                   </tr>
                 </thead>
