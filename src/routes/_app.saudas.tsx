@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, Fragment } from "react";
-import { fetchSaudas, fetchBills, fetchFactories, fetchItems } from "@/lib/queries";
+import { fetchSaudas, fetchBills, fetchFactories } from "@/lib/queries";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,56 +19,46 @@ export const Route = createFileRoute("/_app/saudas")({
   head: () => ({ meta: [{ title: "Saudas" }] }),
 });
 
-type Row = { item_id: string | null; raw_name: string; qty: string; rate: string };
+function totalQtyOf(s: any): number {
+  const t = Number(s.total_qty || 0);
+  if (t > 0) return t;
+  return (s.sauda_items ?? []).reduce((a: number, i: any) => a + Number(i.qty || 0), 0);
+}
 
 function SaudasPage() {
   const qc = useQueryClient();
   const saudas = useQuery({ queryKey: ["saudas"], queryFn: fetchSaudas });
   const bills = useQuery({ queryKey: ["bills"], queryFn: fetchBills });
   const factories = useQuery({ queryKey: ["factories"], queryFn: fetchFactories });
-  const items = useQuery({ queryKey: ["items"], queryFn: fetchItems });
 
   const [party, setParty] = useState("");
   const [factoryId, setFactoryId] = useState<string>("");
   const [basic, setBasic] = useState("");
+  const [qty, setQty] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [linkedBill, setLinkedBill] = useState<string>("");
   const [notes, setNotes] = useState("");
-  const [rows, setRows] = useState<Row[]>([{ item_id: null, raw_name: "", qty: "", rate: "" }]);
-
-  function updateRow(i: number, patch: Partial<Row>) {
-    setRows((r) => r.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
-  }
 
   const save = useMutation({
     mutationFn: async () => {
       if (!party) throw new Error("Party name required");
+      if (!factoryId) throw new Error("Factory required");
       if (!basic || Number(basic) <= 0) throw new Error("Sauda basic rate required");
-      const validRows = rows.filter((r) => Number(r.qty) > 0 && Number(r.rate) > 0);
-      if (!validRows.length) throw new Error("At least one row with qty and rate required");
-      const { data: s, error } = await supabase.from("saudas").insert({
+      if (!qty || Number(qty) <= 0) throw new Error("Quantity required");
+      const { error } = await supabase.from("saudas").insert({
         party_name: party,
-        factory_id: factoryId || null,
+        factory_id: factoryId,
         sauda_basic: Number(basic),
+        total_qty: Number(qty),
         sauda_date: date,
         linked_bill_id: linkedBill || null,
         notes: notes || null,
-      }).select().single();
+      });
       if (error) throw error;
-      const sItems = validRows.map((r) => ({
-        sauda_id: s.id,
-        item_id: r.item_id,
-        raw_name: r.raw_name || items.data?.find((i) => i.id === r.item_id)?.name || "",
-        qty: Number(r.qty),
-        rate: Number(r.rate),
-      }));
-      const { error: e2 } = await supabase.from("sauda_items").insert(sItems);
-      if (e2) throw e2;
     },
     onSuccess: () => {
       toast.success("Sauda saved");
-      setParty(""); setBasic(""); setLinkedBill(""); setNotes("");
-      setRows([{ item_id: null, raw_name: "", qty: "", rate: "" }]);
+      setParty(""); setBasic(""); setQty(""); setLinkedBill(""); setNotes("");
       qc.invalidateQueries({ queryKey: ["saudas"] });
     },
     onError: (e: any) => toast.error(e.message),
@@ -78,13 +68,13 @@ function SaudasPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold">Saudas</h2>
-        <p className="text-sm text-muted-foreground">Manually enter party saudas and optionally link a purchase bill.</p>
+        <p className="text-sm text-muted-foreground">Record a purchase sauda. Lifts happen automatically when you link a purchase bill, or adjust manually below.</p>
       </div>
 
       <Card>
         <CardHeader><CardTitle>New Sauda</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div><Label>Party Name</Label><Input value={party} onChange={(e) => setParty(e.target.value)} /></div>
             <div><Label>Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
             <div>
@@ -97,8 +87,7 @@ function SaudasPage() {
               </Select>
             </div>
             <div><Label>Sauda Basic</Label><Input type="number" value={basic} onChange={(e) => setBasic(e.target.value)} /></div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><Label>Quantity</Label><Input type="number" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
             <div>
               <Label>Link Purchase Bill (optional)</Label>
               <Select value={linkedBill || "none"} onValueChange={(v) => setLinkedBill(v === "none" ? "" : v)}>
@@ -113,31 +102,8 @@ function SaudasPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div><Label>Notes</Label><Textarea rows={1} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
           </div>
-
-          <div className="space-y-2">
-            <Label>Items</Label>
-            {rows.map((r, i) => (
-              <div key={i} className="grid grid-cols-12 gap-2">
-                <div className="col-span-5">
-                  <Select value={r.item_id ?? "none"} onValueChange={(v) => updateRow(i, { item_id: v === "none" ? null : v })}>
-                    <SelectTrigger><SelectValue placeholder="Item…" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">— custom name —</SelectItem>
-                      {items.data?.map((it) => <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Input className="col-span-3" placeholder="Custom name" value={r.raw_name} onChange={(e) => updateRow(i, { raw_name: e.target.value })} />
-                <Input className="col-span-2" type="number" placeholder="Qty" value={r.qty} onChange={(e) => updateRow(i, { qty: e.target.value })} />
-                <Input className="col-span-2" type="number" placeholder="Rate" value={r.rate} onChange={(e) => updateRow(i, { rate: e.target.value })} />
-              </div>
-            ))}
-            <Button variant="outline" size="sm" onClick={() => setRows([...rows, { item_id: null, raw_name: "", qty: "", rate: "" }])}>
-              + Add Row
-            </Button>
-          </div>
+          <div><Label>Notes</Label><Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
 
           <Button onClick={() => save.mutate()} disabled={save.isPending}>
             {save.isPending ? "Saving…" : "Save Sauda"}
@@ -155,6 +121,7 @@ function SaudasByCategory({ data, onChanged }: { data: any[]; onChanged: () => v
   const [editing, setEditing] = useState<any | null>(null);
   const [adjustDelta, setAdjustDelta] = useState<Record<string, string>>({});
   const [adjustNote, setAdjustNote] = useState<Record<string, string>>({});
+  const [pendingAdjust, setPendingAdjust] = useState<{ sauda: any; delta: number; note: string } | null>(null);
 
   const del = useMutation({
     mutationFn: async (id: string) => {
@@ -167,11 +134,10 @@ function SaudasByCategory({ data, onChanged }: { data: any[]; onChanged: () => v
     onError: (e: any) => toast.error(e.message),
   });
 
-  // Insert an uplift (positive = lifted, negative = reversal) and update lifted_qty cache
   const uplift = useMutation({
     mutationFn: async (p: { sauda: any; delta: number; note?: string; kind?: string }) => {
       if (!p.delta) throw new Error("Enter a non-zero quantity");
-      const totalQty = (p.sauda.sauda_items ?? []).reduce((a: number, i: any) => a + Number(i.qty || 0), 0);
+      const totalQty = totalQtyOf(p.sauda);
       const curLifted = Number(p.sauda.lifted_qty || 0);
       const newLifted = curLifted + p.delta;
       if (newLifted < 0) throw new Error("Cannot reduce below zero");
@@ -196,6 +162,7 @@ function SaudasByCategory({ data, onChanged }: { data: any[]; onChanged: () => v
       toast.success(p.delta > 0 ? "Lifted" : "Reversed");
       setAdjustDelta((m) => ({ ...m, [p.sauda.id]: "" }));
       setAdjustNote((m) => ({ ...m, [p.sauda.id]: "" }));
+      setPendingAdjust(null);
       onChanged();
     },
     onError: (e: any) => toast.error(e.message),
@@ -228,11 +195,18 @@ function SaudasByCategory({ data, onChanged }: { data: any[]; onChanged: () => v
     );
   }
 
+  function requestAdjust(s: any, signMultiplier: 1 | -1) {
+    const raw = Number(adjustDelta[s.id]);
+    if (!raw || isNaN(raw)) { toast.error("Enter a quantity"); return; }
+    const delta = Math.abs(raw) * signMultiplier;
+    setPendingAdjust({ sauda: s, delta, note: adjustNote[s.id] ?? "" });
+  }
+
   return (
     <>
       <div className="space-y-4">
         {groups.map(([cat, rows]) => {
-          const catTotal = rows.reduce((a, s) => a + (s.sauda_items ?? []).reduce((x: number, i: any) => x + Number(i.qty || 0), 0), 0);
+          const catTotal = rows.reduce((a, s) => a + totalQtyOf(s), 0);
           const catLifted = rows.reduce((a, s) => a + Number(s.lifted_qty || 0), 0);
           const catPending = Math.max(0, catTotal - catLifted);
           const openCount = rows.filter((r) => r.status !== "done").length;
@@ -266,7 +240,7 @@ function SaudasByCategory({ data, onChanged }: { data: any[]; onChanged: () => v
                   </thead>
                   <tbody>
                     {rows.map((s: any) => {
-                      const totalQty = (s.sauda_items ?? []).reduce((a: number, i: any) => a + Number(i.qty || 0), 0);
+                      const totalQty = totalQtyOf(s);
                       const lifted = Number(s.lifted_qty || 0);
                       const pending = Math.max(0, totalQty - lifted);
                       const isOpen = expanded[s.id];
@@ -318,90 +292,55 @@ function SaudasByCategory({ data, onChanged }: { data: any[]; onChanged: () => v
                             <tr className="bg-muted/30">
                               <td></td>
                               <td colSpan={9} className="p-3 space-y-3">
-                                <div className="grid md:grid-cols-2 gap-4">
-                                  <div>
-                                    <div className="text-xs font-semibold uppercase text-muted-foreground mb-1">Sauda Items</div>
-                                    <table className="w-full text-xs border">
-                                      <thead className="bg-background border-b">
-                                        <tr>
-                                          <th className="p-1 text-left">Item</th>
-                                          <th className="p-1 text-right">Qty</th>
-                                          <th className="p-1 text-right">Rate</th>
+                                <div>
+                                  <div className="text-xs font-semibold uppercase text-muted-foreground mb-1">Uplift History</div>
+                                  <table className="w-full text-xs border">
+                                    <thead className="bg-background border-b">
+                                      <tr>
+                                        <th className="p-1 text-left">When</th>
+                                        <th className="p-1">Kind</th>
+                                        <th className="p-1 text-right">Qty</th>
+                                        <th className="p-1 text-left">Note</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {ups.map((u: any) => (
+                                        <tr key={u.id} className="border-b last:border-0">
+                                          <td className="p-1 whitespace-nowrap">{new Date(u.created_at).toLocaleString()}</td>
+                                          <td className="p-1"><Badge variant={u.kind === "bill" ? "default" : "secondary"}>{u.kind}</Badge></td>
+                                          <td className={`p-1 text-right font-mono ${Number(u.qty) < 0 ? "text-destructive" : ""}`}>
+                                            {Number(u.qty) > 0 ? "+" : ""}{u.qty}
+                                          </td>
+                                          <td className="p-1">{u.note ?? "—"}</td>
                                         </tr>
-                                      </thead>
-                                      <tbody>
-                                        {(s.sauda_items ?? []).map((it: any) => (
-                                          <tr key={it.id} className="border-b last:border-0">
-                                            <td className="p-1">{it.raw_name || "—"}</td>
-                                            <td className="p-1 text-right font-mono">{it.qty}</td>
-                                            <td className="p-1 text-right font-mono">{it.rate}</td>
-                                          </tr>
-                                        ))}
-                                        {!s.sauda_items?.length && (
-                                          <tr><td colSpan={3} className="p-2 text-center text-muted-foreground">No items.</td></tr>
-                                        )}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                  <div>
-                                    <div className="text-xs font-semibold uppercase text-muted-foreground mb-1">Uplift History</div>
-                                    <table className="w-full text-xs border">
-                                      <thead className="bg-background border-b">
-                                        <tr>
-                                          <th className="p-1 text-left">When</th>
-                                          <th className="p-1">Kind</th>
-                                          <th className="p-1 text-right">Qty</th>
-                                          <th className="p-1 text-left">Note</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {ups.map((u: any) => (
-                                          <tr key={u.id} className="border-b last:border-0">
-                                            <td className="p-1 whitespace-nowrap">{new Date(u.created_at).toLocaleString()}</td>
-                                            <td className="p-1"><Badge variant={u.kind === "bill" ? "default" : "secondary"}>{u.kind}</Badge></td>
-                                            <td className={`p-1 text-right font-mono ${Number(u.qty) < 0 ? "text-destructive" : ""}`}>
-                                              {Number(u.qty) > 0 ? "+" : ""}{u.qty}
-                                            </td>
-                                            <td className="p-1">{u.note ?? "—"}</td>
-                                          </tr>
-                                        ))}
-                                        {!ups.length && (
-                                          <tr><td colSpan={4} className="p-2 text-center text-muted-foreground">No uplifts yet.</td></tr>
-                                        )}
-                                      </tbody>
-                                    </table>
-                                    <div className="flex gap-1 mt-2 items-end flex-wrap">
-                                      <div className="flex-1 min-w-[120px]">
-                                        <Label className="text-xs">Adjust Qty (+/−)</Label>
-                                        <Input
-                                          className="h-8"
-                                          type="number"
-                                          placeholder="e.g. 5 or -2"
-                                          value={adjustDelta[s.id] ?? ""}
-                                          onChange={(e) => setAdjustDelta({ ...adjustDelta, [s.id]: e.target.value })}
-                                        />
-                                      </div>
-                                      <div className="flex-1 min-w-[140px]">
-                                        <Label className="text-xs">Note</Label>
-                                        <Input
-                                          className="h-8"
-                                          placeholder="optional"
-                                          value={adjustNote[s.id] ?? ""}
-                                          onChange={(e) => setAdjustNote({ ...adjustNote, [s.id]: e.target.value })}
-                                        />
-                                      </div>
-                                      <Button
-                                        size="sm"
-                                        disabled={uplift.isPending}
-                                        onClick={() => uplift.mutate({
-                                          sauda: s,
-                                          delta: Number(adjustDelta[s.id]),
-                                          note: adjustNote[s.id],
-                                        })}
-                                      >
-                                        Apply
-                                      </Button>
+                                      ))}
+                                      {!ups.length && (
+                                        <tr><td colSpan={4} className="p-2 text-center text-muted-foreground">No uplifts yet.</td></tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                  <div className="flex gap-2 mt-2 items-end flex-wrap">
+                                    <div className="flex-1 min-w-[120px]">
+                                      <Label className="text-xs">Quantity</Label>
+                                      <Input
+                                        className="h-8"
+                                        type="number"
+                                        placeholder="e.g. 5"
+                                        value={adjustDelta[s.id] ?? ""}
+                                        onChange={(e) => setAdjustDelta({ ...adjustDelta, [s.id]: e.target.value })}
+                                      />
                                     </div>
+                                    <div className="flex-[2] min-w-[140px]">
+                                      <Label className="text-xs">Note</Label>
+                                      <Input
+                                        className="h-8"
+                                        placeholder="optional"
+                                        value={adjustNote[s.id] ?? ""}
+                                        onChange={(e) => setAdjustNote({ ...adjustNote, [s.id]: e.target.value })}
+                                      />
+                                    </div>
+                                    <Button size="sm" onClick={() => requestAdjust(s, 1)}>Lift +</Button>
+                                    <Button size="sm" variant="outline" onClick={() => requestAdjust(s, -1)}>Unlift −</Button>
                                   </div>
                                 </div>
                               </td>
@@ -418,6 +357,35 @@ function SaudasByCategory({ data, onChanged }: { data: any[]; onChanged: () => v
         })}
       </div>
 
+      <Dialog open={!!pendingAdjust} onOpenChange={(o) => { if (!o) setPendingAdjust(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Confirm adjustment</DialogTitle></DialogHeader>
+          {pendingAdjust && (
+            <div className="space-y-2 text-sm">
+              <div><b>{pendingAdjust.sauda.party_name}</b> — {pendingAdjust.sauda.sauda_date}</div>
+              <div>
+                {pendingAdjust.delta > 0 ? "Lift" : "Unlift"}{" "}
+                <span className="font-mono font-semibold">{Math.abs(pendingAdjust.delta)}</span>{" "}
+                {pendingAdjust.delta > 0 ? "onto" : "from"} this sauda?
+              </div>
+              <div className="text-muted-foreground">
+                Current lifted: {Number(pendingAdjust.sauda.lifted_qty || 0)} / {totalQtyOf(pendingAdjust.sauda)}
+              </div>
+              {pendingAdjust.note && <div className="text-muted-foreground">Note: {pendingAdjust.note}</div>}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingAdjust(null)}>Cancel</Button>
+            <Button
+              disabled={uplift.isPending}
+              onClick={() => pendingAdjust && uplift.mutate(pendingAdjust)}
+            >
+              {uplift.isPending ? "Saving…" : "Confirm"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ModifySaudaDialog
         sauda={editing}
         onClose={() => setEditing(null)}
@@ -430,6 +398,7 @@ function SaudasByCategory({ data, onChanged }: { data: any[]; onChanged: () => v
 function ModifySaudaDialog({ sauda, onClose, onSaved }: { sauda: any | null; onClose: () => void; onSaved: () => void }) {
   const [party, setParty] = useState("");
   const [basic, setBasic] = useState("");
+  const [qty, setQty] = useState("");
   const [date, setDate] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -437,6 +406,7 @@ function ModifySaudaDialog({ sauda, onClose, onSaved }: { sauda: any | null; onC
     if (sauda) {
       setParty(sauda.party_name ?? "");
       setBasic(String(sauda.sauda_basic ?? ""));
+      setQty(String(totalQtyOf(sauda) || ""));
       setDate(sauda.sauda_date ?? "");
       setNotes(sauda.notes ?? "");
     }
@@ -450,6 +420,7 @@ function ModifySaudaDialog({ sauda, onClose, onSaved }: { sauda: any | null; onC
         .update({
           party_name: party,
           sauda_basic: Number(basic),
+          total_qty: Number(qty) || 0,
           sauda_date: date,
           notes: notes || null,
         })
@@ -461,7 +432,7 @@ function ModifySaudaDialog({ sauda, onClose, onSaved }: { sauda: any | null; onC
   });
 
   function reset() {
-    setParty(""); setBasic(""); setDate(""); setNotes("");
+    setParty(""); setBasic(""); setQty(""); setDate(""); setNotes("");
   }
 
   return (
@@ -470,9 +441,10 @@ function ModifySaudaDialog({ sauda, onClose, onSaved }: { sauda: any | null; onC
         <DialogHeader><DialogTitle>Modify Sauda</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div><Label>Party</Label><Input value={party} onChange={(e) => setParty(e.target.value)} /></div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div><Label>Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
             <div><Label>Basic</Label><Input type="number" value={basic} onChange={(e) => setBasic(e.target.value)} /></div>
+            <div><Label>Qty</Label><Input type="number" value={qty} onChange={(e) => setQty(e.target.value)} /></div>
           </div>
           <div><Label>Notes</Label><Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
         </div>
