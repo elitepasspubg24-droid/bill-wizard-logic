@@ -7,10 +7,10 @@ export const Route = createFileRoute("/_app")({
 
 const tabs = [
   { to: "/", label: "Daily Rates" },
+  { to: "/history", label: "History" },
   { to: "/items", label: "Items" },
   { to: "/bills", label: "Bills" },
   { to: "/saudas", label: "Saudas" },
-  { to: "/history", label: "History" },
 ];
 
 function AppLayout() {
