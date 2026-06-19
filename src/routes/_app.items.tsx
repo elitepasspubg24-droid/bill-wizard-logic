@@ -17,14 +17,15 @@ function ItemsPage() {
   const saudas = useQuery({ queryKey: ["saudas"], queryFn: fetchSaudas });
   const [q, setQ] = useState("");
 
-  // For each factory, find the pending (not linked to a bill) sauda with the
-  // highest total pending qty. That sauda's basic feeds the Sauda Rate column.
+  // For each factory, find the open sauda with the highest pending qty.
   const topPendingByFactory = useMemo(() => {
     const map = new Map<string, { basic: number; party: string; qty: number }>();
     if (!saudas.data) return map;
     for (const s of saudas.data as any[]) {
       if (!s.factory_id) continue;
-      const total = (s.sauda_items ?? []).reduce((a: number, r: any) => a + Number(r.qty || 0), 0);
+      if (s.status === "done") continue;
+      const itemsTotal = (s.sauda_items ?? []).reduce((a: number, r: any) => a + Number(r.qty || 0), 0);
+      const total = Number(s.total_qty || 0) || itemsTotal;
       const qty = Math.max(0, total - Number(s.lifted_qty || 0));
       if (qty <= 0) continue;
       const cur = map.get(s.factory_id);

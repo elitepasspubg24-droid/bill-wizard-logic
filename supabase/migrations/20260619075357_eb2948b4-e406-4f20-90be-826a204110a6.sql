@@ -1,0 +1,2 @@
+ALTER TABLE public.saudas ADD COLUMN IF NOT EXISTS total_qty numeric NOT NULL DEFAULT 0;
+UPDATE public.saudas s SET total_qty = COALESCE((SELECT SUM(qty) FROM public.sauda_items WHERE sauda_id = s.id), 0) WHERE total_qty = 0;

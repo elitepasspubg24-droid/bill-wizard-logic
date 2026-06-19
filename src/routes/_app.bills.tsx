@@ -143,10 +143,11 @@ function BillsPage() {
           });
           if (upErr) throw upErr;
 
-          const totalQty = (sauda?.sauda_items ?? []).reduce(
+          const itemsTotal = (sauda?.sauda_items ?? []).reduce(
             (a: number, r: any) => a + Number(r.qty || 0),
             0,
           );
+          const totalQty = Number(sauda?.total_qty || 0) || itemsTotal;
           const newLifted = Number(sauda?.lifted_qty ?? 0) + billQty;
           const cappedLifted = totalQty > 0 ? Math.min(totalQty, newLifted) : newLifted;
           const newStatus = totalQty > 0 && cappedLifted >= totalQty ? "done" : sauda?.status ?? "open";
@@ -262,11 +263,16 @@ function BillsPage() {
                   <SelectTrigger className="w-full max-w-md"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">— none —</SelectItem>
-                    {saudas.data?.filter((s: any) => !s.linked_bill_id).map((s: any) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.party_name} — {s.sauda_date} — basic {s.sauda_basic}
-                      </SelectItem>
-                    ))}
+                    {saudas.data?.filter((s: any) => s.status !== "done").map((s: any) => {
+                      const itemsTotal = (s.sauda_items ?? []).reduce((a: number, r: any) => a + Number(r.qty || 0), 0);
+                      const totalQty = Number(s.total_qty || 0) || itemsTotal;
+                      const pending = Math.max(0, totalQty - Number(s.lifted_qty || 0));
+                      return (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.party_name} — {s.sauda_date} — basic {s.sauda_basic} — pending {pending}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>

@@ -282,6 +282,7 @@ export type Database = {
           sauda_basic: number
           sauda_date: string
           status: string
+          total_qty: number
         }
         Insert: {
           created_at?: string
@@ -294,6 +295,7 @@ export type Database = {
           sauda_basic?: number
           sauda_date?: string
           status?: string
+          total_qty?: number
         }
         Update: {
           created_at?: string
@@ -306,6 +308,7 @@ export type Database = {
           sauda_basic?: number
           sauda_date?: string
           status?: string
+          total_qty?: number
         }
         Relationships: [
           {
