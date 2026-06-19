@@ -143,10 +143,11 @@ function BillsPage() {
           });
           if (upErr) throw upErr;
 
-          const totalQty = (sauda?.sauda_items ?? []).reduce(
+          const itemsTotal = (sauda?.sauda_items ?? []).reduce(
             (a: number, r: any) => a + Number(r.qty || 0),
             0,
           );
+          const totalQty = Number(sauda?.total_qty || 0) || itemsTotal;
           const newLifted = Number(sauda?.lifted_qty ?? 0) + billQty;
           const cappedLifted = totalQty > 0 ? Math.min(totalQty, newLifted) : newLifted;
           const newStatus = totalQty > 0 && cappedLifted >= totalQty ? "done" : sauda?.status ?? "open";
