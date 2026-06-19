@@ -13,13 +13,21 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-
+ 
 export const Route = createFileRoute("/_app/bills")({
   component: BillsPage,
   head: () => ({ meta: [{ title: "Bills" }] }),
 });
-
+ 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -28,21 +36,256 @@ function fileToDataUrl(file: File): Promise<string> {
     r.readAsDataURL(file);
   });
 }
-
+ 
+// ─── Edit Dialog ────────────────────────────────────────────────────────────
+ 
+function EditBillDialog({
+  bill,
+  items,
+  open,
+  onClose,
+}: {
+  bill: any;
+  items: any[];
+  open: boolean;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [vendor, setVendor] = useState(bill.vendor ?? "");
+  const [billNo, setBillNo] = useState(bill.bill_no ?? "");
+  const [billDate, setBillDate] = useState(bill.bill_date ?? "");
+  const [billItems, setBillItems] = useState<any[]>(
+    (bill.bill_items ?? []).map((bi: any) => ({ ...bi }))
+  );
+ 
+  const mut = useMutation({
+    mutationFn: async () => {
+      // Update bill header
+      const { error: be } = await supabase
+        .from("bills")
+        .update({ vendor, bill_no: billNo, bill_date: billDate })
+        .eq("id", bill.id);
+      if (be) throw be;
+ 
+      // Update each bill_item row (qty and rate)
+      for (const bi of billItems) {
+        const { error } = await supabase
+          .from("bill_items")
+          .update({ qty: Number(bi.qty), rate: Number(bi.rate), item_id: bi.item_id })
+          .eq("id", bi.id);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      toast.success("Bill updated");
+      qc.invalidateQueries({ queryKey: ["bills"] });
+      qc.invalidateQueries({ queryKey: ["items"] });
+      onClose();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+ 
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Edit Bill</DialogTitle>
+        </DialogHeader>
+ 
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <Label>Vendor</Label>
+              <Input value={vendor} onChange={(e) => setVendor(e.target.value)} />
+            </div>
+            <div>
+              <Label>Bill No</Label>
+              <Input value={billNo} onChange={(e) => setBillNo(e.target.value)} />
+            </div>
+            <div>
+              <Label>Bill Date</Label>
+              <Input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} />
+            </div>
+          </div>
+ 
+          {billItems.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b text-left">
+                  <tr>
+                    <th className="p-2">Raw Name</th>
+                    <th className="p-2">Match Item</th>
+                    <th className="p-2 w-24">Qty</th>
+                    <th className="p-2 w-28">Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {billItems.map((bi, i) => (
+                    <tr key={bi.id} className="border-b">
+                      <td className="p-2 text-muted-foreground">{bi.raw_name}</td>
+                      <td className="p-2">
+                        <Select
+                          value={bi.item_id ?? "none"}
+                          onValueChange={(v) => {
+                            const updated = [...billItems];
+                            updated[i] = { ...updated[i], item_id: v === "none" ? null : v };
+                            setBillItems(updated);
+                          }}
+                        >
+                          <SelectTrigger className="w-48">
+                            <SelectValue placeholder="Unmatched" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">— skip —</SelectItem>
+                            {items.map((opt) => (
+                              <SelectItem key={opt.id} value={opt.id}>{opt.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
+                      <td className="p-2">
+                        <Input
+                          type="number"
+                          value={bi.qty}
+                          onChange={(e) => {
+                            const updated = [...billItems];
+                            updated[i] = { ...updated[i], qty: e.target.value };
+                            setBillItems(updated);
+                          }}
+                        />
+                      </td>
+                      <td className="p-2">
+                        <Input
+                          type="number"
+                          value={bi.rate}
+                          onChange={(e) => {
+                            const updated = [...billItems];
+                            updated[i] = { ...updated[i], rate: e.target.value };
+                            setBillItems(updated);
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+ 
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
+            {mut.isPending ? "Saving…" : "Save Changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+ 
+// ─── Delete Confirm Dialog ───────────────────────────────────────────────────
+ 
+function DeleteBillDialog({
+  bill,
+  open,
+  onClose,
+}: {
+  bill: any;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+ 
+  const mut = useMutation({
+    mutationFn: async () => {
+      // Reverse stock changes
+      const { data: billItems } = await supabase
+        .from("bill_items")
+        .select("*")
+        .eq("bill_id", bill.id);
+ 
+      if (billItems?.length) {
+        for (const bi of billItems) {
+          if (!bi.item_id) continue;
+          const { data: item } = await supabase
+            .from("items")
+            .select("available_qty")
+            .eq("id", bi.item_id)
+            .single();
+          if (!item) continue;
+          const qty = Number(bi.qty) || 0;
+          const newQty =
+            bill.type === "purchase"
+              ? Number(item.available_qty) - qty
+              : Number(item.available_qty) + qty;
+          await supabase
+            .from("items")
+            .update({ available_qty: newQty })
+            .eq("id", bi.item_id);
+        }
+      }
+ 
+      // Delete bill_items first, then bill
+      await supabase.from("bill_items").delete().eq("bill_id", bill.id);
+      const { error } = await supabase.from("bills").delete().eq("id", bill.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Bill deleted and stock reversed");
+      qc.invalidateQueries({ queryKey: ["bills"] });
+      qc.invalidateQueries({ queryKey: ["items"] });
+      onClose();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+ 
+  return (
+    <AlertDialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete Bill?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This will permanently delete bill{" "}
+            <strong>{bill.bill_no ?? bill.id.slice(0, 8)}</strong>
+            {bill.vendor ? ` from ${bill.vendor}` : ""} and <strong>reverse</strong> its
+            stock changes. This cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={onClose}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => mut.mutate()}
+            disabled={mut.isPending}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {mut.isPending ? "Deleting…" : "Yes, Delete"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+ 
+// ─── Main Bills Page ─────────────────────────────────────────────────────────
+ 
 function BillsPage() {
   const qc = useQueryClient();
   const bills = useQuery({ queryKey: ["bills"], queryFn: fetchBills });
   const items = useQuery({ queryKey: ["items"], queryFn: fetchItems });
   const saudas = useQuery({ queryKey: ["saudas"], queryFn: fetchSaudas });
   const extract = useServerFn(extractBillFromImage);
-
+ 
   const [type, setType] = useState<"purchase" | "sale">("purchase");
   const [file, setFile] = useState<File | null>(null);
   const [draft, setDraft] = useState<ExtractedBill | null>(null);
   const [busy, setBusy] = useState(false);
   const [matches, setMatches] = useState<(string | null)[]>([]);
   const [linkSaudaId, setLinkSaudaId] = useState<string>("none");
-
+ 
+  const [editBill, setEditBill] = useState<any | null>(null);
+  const [deleteBill, setDeleteBill] = useState<any | null>(null);
+ 
   function autoMatch(raw: string): string | null {
     if (!items.data) return null;
     const r = raw.toLowerCase();
@@ -56,7 +299,7 @@ function BillsPage() {
     }
     return best && best.score >= 3 ? best.id : null;
   }
-
+ 
   async function onExtract() {
     if (!file) return;
     setBusy(true);
@@ -72,14 +315,14 @@ function BillsPage() {
       setBusy(false);
     }
   }
-
+ 
   const save = useMutation({
     mutationFn: async () => {
       if (!draft || !file) throw new Error("nothing to save");
       const path = `${Date.now()}_${file.name}`;
       const up = await supabase.storage.from("bills").upload(path, file);
       if (up.error) throw up.error;
-
+ 
       const { data: bill, error: be } = await supabase
         .from("bills")
         .insert({
@@ -92,7 +335,7 @@ function BillsPage() {
         .select()
         .single();
       if (be) throw be;
-
+ 
       const rows = draft.items.map((it, i) => ({
         bill_id: bill.id,
         item_id: matches[i],
@@ -104,8 +347,7 @@ function BillsPage() {
         const { error } = await supabase.from("bill_items").insert(rows);
         if (error) throw error;
       }
-
-      // Update item qty (purchase adds, sale subtracts) and last_purchase_rate
+ 
       for (let i = 0; i < draft.items.length; i++) {
         const id = matches[i];
         if (!id) continue;
@@ -121,18 +363,17 @@ function BillsPage() {
           })
           .eq("id", id);
       }
-
-      // Link the bill to a sauda and record an uplift for the bill's total qty
+ 
       if (linkSaudaId && linkSaudaId !== "none") {
         const sauda = (saudas.data as any[] | undefined)?.find((s) => s.id === linkSaudaId);
         const billQty = rows.reduce((a, r) => a + Number(r.qty || 0), 0);
-
+ 
         const { error: linkErr } = await supabase
           .from("saudas")
           .update({ linked_bill_id: bill.id })
           .eq("id", linkSaudaId);
         if (linkErr) throw linkErr;
-
+ 
         if (billQty > 0) {
           const { error: upErr } = await supabase.from("sauda_uplifts").insert({
             sauda_id: linkSaudaId,
@@ -142,7 +383,7 @@ function BillsPage() {
             note: `Bill ${draft.bill_no ?? bill.id.slice(0, 6)}`,
           });
           if (upErr) throw upErr;
-
+ 
           const itemsTotal = (sauda?.sauda_items ?? []).reduce(
             (a: number, r: any) => a + Number(r.qty || 0),
             0,
@@ -168,7 +409,7 @@ function BillsPage() {
     },
     onError: (e: any) => toast.error(e.message),
   });
-
+ 
   return (
     <div className="space-y-6">
       <div>
@@ -177,7 +418,7 @@ function BillsPage() {
           Upload a purchase or sale bill (PDF / image). AI extracts items, you confirm, qty &amp; rate auto-update.
         </p>
       </div>
-
+ 
       <Card>
         <CardHeader><CardTitle>Upload Bill</CardTitle></CardHeader>
         <CardContent className="space-y-3">
@@ -204,7 +445,7 @@ function BillsPage() {
               {busy ? "Extracting…" : "Extract with AI"}
             </Button>
           </div>
-
+ 
           {draft && (
             <div className="space-y-3 pt-3 border-t">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -286,7 +527,7 @@ function BillsPage() {
           )}
         </CardContent>
       </Card>
-
+ 
       <Card>
         <CardHeader><CardTitle>Recent Bills</CardTitle></CardHeader>
         <CardContent className="overflow-x-auto">
@@ -298,11 +539,12 @@ function BillsPage() {
                 <th className="p-2">Vendor</th>
                 <th className="p-2">Bill #</th>
                 <th className="p-2">Items</th>
+                <th className="p-2">Actions</th>
               </tr>
             </thead>
             <tbody>
               {bills.data?.map((b: any) => (
-                <tr key={b.id} className="border-b">
+                <tr key={b.id} className="border-b hover:bg-muted/40">
                   <td className="p-2">{b.bill_date ?? new Date(b.created_at).toLocaleDateString()}</td>
                   <td className="p-2">
                     <Badge variant={b.type === "purchase" ? "default" : "secondary"}>{b.type}</Badge>
@@ -310,15 +552,55 @@ function BillsPage() {
                   <td className="p-2">{b.vendor ?? "—"}</td>
                   <td className="p-2">{b.bill_no ?? "—"}</td>
                   <td className="p-2">{b.bill_items?.length ?? 0}</td>
+                  <td className="p-2">
+                    <div className="flex gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        title="Edit bill"
+                        onClick={() => setEditBill(b)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        title="Delete bill"
+                        onClick={() => setDeleteBill(b)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {!bills.data?.length && (
-                <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">No bills yet.</td></tr>
+                <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No bills yet.</td></tr>
               )}
             </tbody>
           </table>
         </CardContent>
       </Card>
+ 
+      {editBill && (
+        <EditBillDialog
+          bill={editBill}
+          items={items.data ?? []}
+          open={!!editBill}
+          onClose={() => setEditBill(null)}
+        />
+      )}
+ 
+      {deleteBill && (
+        <DeleteBillDialog
+          bill={deleteBill}
+          open={!!deleteBill}
+          onClose={() => setDeleteBill(null)}
+        />
+      )}
     </div>
   );
 }
+ 
