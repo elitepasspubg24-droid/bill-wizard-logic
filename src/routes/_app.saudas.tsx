@@ -211,146 +211,151 @@ function SaudasByCategory({ data, onChanged }: { data: any[]; onChanged: () => v
           const catPending = Math.max(0, catTotal - catLifted);
           const openCount = rows.filter((r) => r.status !== "done").length;
           return (
-            <Card key={cat}>
-              <CardHeader>
-                <CardTitle className="text-base flex flex-wrap items-center gap-2">
-                  <span>{cat}</span>
+            <Card key={cat} className="overflow-hidden">
+              <CardHeader className="bg-muted/40 border-b py-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <CardTitle className="text-base">{cat}</CardTitle>
                   <Badge variant="secondary">{rows.length} saudas</Badge>
                   <Badge variant="outline">{openCount} open</Badge>
-                  <span className="text-xs font-normal text-muted-foreground ml-auto">
-                    Total {catTotal} · Lifted {catLifted} · <span className="text-foreground font-semibold">Pending {catPending}</span>
-                  </span>
-                </CardTitle>
+                  <div className="ml-auto flex items-center gap-4 text-xs">
+                    <div className="text-muted-foreground">Total <span className="font-mono font-semibold text-foreground">{catTotal}</span></div>
+                    <div className="text-muted-foreground">Lifted <span className="font-mono font-semibold text-foreground">{catLifted}</span></div>
+                    <div className="text-muted-foreground">Pending <span className="font-mono font-semibold text-primary">{catPending}</span></div>
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="border-b text-left text-muted-foreground">
-                    <tr>
-                      <th className="p-2 w-6"></th>
-                      <th className="p-2">Date</th>
-                      <th className="p-2">Party</th>
-                      <th className="p-2">Status</th>
-                      <th className="p-2 text-right">Basic</th>
-                      <th className="p-2 text-right">Qty</th>
-                      <th className="p-2 text-right">Lifted</th>
-                      <th className="p-2 text-right">Pending</th>
-                      <th className="p-2">Linked Bill</th>
-                      <th className="p-2 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((s: any) => {
-                      const totalQty = totalQtyOf(s);
-                      const lifted = Number(s.lifted_qty || 0);
-                      const pending = Math.max(0, totalQty - lifted);
-                      const isOpen = expanded[s.id];
-                      const ups = (s.sauda_uplifts ?? []).slice().sort((a: any, b: any) => (a.created_at < b.created_at ? 1 : -1));
-                      const done = s.status === "done";
-                      return (
-                        <Fragment key={s.id}>
-                          <tr className={`border-b ${done ? "opacity-60" : ""}`}>
-                            <td className="p-2">
-                              <button onClick={() => setExpanded({ ...expanded, [s.id]: !isOpen })} className="text-muted-foreground">
-                                {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                              </button>
-                            </td>
-                            <td className="p-2 whitespace-nowrap">{s.sauda_date}</td>
-                            <td className="p-2 font-medium">
-                              {s.party_name}
-                              {s.notes && <div className="text-xs text-muted-foreground truncate max-w-[200px]">{s.notes}</div>}
-                            </td>
-                            <td className="p-2">
+              <CardContent className="p-0 divide-y">
+                {rows.map((s: any) => {
+                  const totalQty = totalQtyOf(s);
+                  const lifted = Number(s.lifted_qty || 0);
+                  const pending = Math.max(0, totalQty - lifted);
+                  const isOpen = expanded[s.id];
+                  const ups = (s.sauda_uplifts ?? []).slice().sort((a: any, b: any) => (a.created_at < b.created_at ? 1 : -1));
+                  const done = s.status === "done";
+                  const progress = totalQty > 0 ? Math.min(100, (lifted / totalQty) * 100) : 0;
+                  return (
+                    <div key={s.id} className={done ? "opacity-60" : ""}>
+                      <div className="p-4 hover:bg-muted/30 transition-colors">
+                        <div className="flex items-start gap-3">
+                          <button
+                            onClick={() => setExpanded({ ...expanded, [s.id]: !isOpen })}
+                            className="mt-1 text-muted-foreground hover:text-foreground"
+                            aria-label="Toggle details"
+                          >
+                            {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                          </button>
+
+                          <div className="flex-1 min-w-0 space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-base">{s.party_name}</span>
                               <Badge variant={done ? "secondary" : pending === 0 ? "default" : "outline"}>
                                 {done ? "Done" : pending === 0 ? "Fulfilled" : "Open"}
                               </Badge>
-                            </td>
-                            <td className="p-2 text-right font-mono">{s.sauda_basic}</td>
-                            <td className="p-2 text-right font-mono">{totalQty}</td>
-                            <td className="p-2 text-right font-mono">{lifted}</td>
-                            <td className="p-2 text-right font-mono font-semibold">{pending}</td>
-                            <td className="p-2">
-                              {s.bills ? <Badge variant="outline">{s.bills.bill_no ?? s.bills.vendor}</Badge> : "—"}
-                            </td>
-                            <td className="p-2 text-right">
-                              <div className="flex justify-end gap-1 flex-wrap">
-                                <Button size="sm" variant="outline" onClick={() => setEditing(s)}>Modify</Button>
-                                <Button size="sm" variant={done ? "outline" : "default"} onClick={() => toggleDone.mutate(s)}>
-                                  {done ? "Reopen" : "Done"}
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  disabled={del.isPending}
-                                  onClick={() => { if (confirm(`Delete sauda for ${s.party_name}?`)) del.mutate(s.id); }}
-                                >
-                                  Delete
-                                </Button>
+                              <span className="text-xs text-muted-foreground">{s.sauda_date}</span>
+                              {s.bills && (
+                                <Badge variant="outline" className="text-xs">
+                                  Bill: {s.bills.bill_no ?? s.bills.vendor}
+                                </Badge>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                              <div>
+                                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Basic</div>
+                                <div className="font-mono font-medium">{s.sauda_basic}</div>
                               </div>
-                            </td>
-                          </tr>
-                          {isOpen && (
-                            <tr className="bg-muted/30">
-                              <td></td>
-                              <td colSpan={9} className="p-3 space-y-3">
-                                <div>
-                                  <div className="text-xs font-semibold uppercase text-muted-foreground mb-1">Uplift History</div>
-                                  <table className="w-full text-xs border">
-                                    <thead className="bg-background border-b">
-                                      <tr>
-                                        <th className="p-1 text-left">When</th>
-                                        <th className="p-1">Kind</th>
-                                        <th className="p-1 text-right">Qty</th>
-                                        <th className="p-1 text-left">Note</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {ups.map((u: any) => (
-                                        <tr key={u.id} className="border-b last:border-0">
-                                          <td className="p-1 whitespace-nowrap">{new Date(u.created_at).toLocaleString()}</td>
-                                          <td className="p-1"><Badge variant={u.kind === "bill" ? "default" : "secondary"}>{u.kind}</Badge></td>
-                                          <td className={`p-1 text-right font-mono ${Number(u.qty) < 0 ? "text-destructive" : ""}`}>
-                                            {Number(u.qty) > 0 ? "+" : ""}{u.qty}
-                                          </td>
-                                          <td className="p-1">{u.note ?? "—"}</td>
-                                        </tr>
-                                      ))}
-                                      {!ups.length && (
-                                        <tr><td colSpan={4} className="p-2 text-center text-muted-foreground">No uplifts yet.</td></tr>
-                                      )}
-                                    </tbody>
-                                  </table>
-                                  <div className="flex gap-2 mt-2 items-end flex-wrap">
-                                    <div className="flex-1 min-w-[120px]">
-                                      <Label className="text-xs">Quantity</Label>
-                                      <Input
-                                        className="h-8"
-                                        type="number"
-                                        placeholder="e.g. 5"
-                                        value={adjustDelta[s.id] ?? ""}
-                                        onChange={(e) => setAdjustDelta({ ...adjustDelta, [s.id]: e.target.value })}
-                                      />
-                                    </div>
-                                    <div className="flex-[2] min-w-[140px]">
-                                      <Label className="text-xs">Note</Label>
-                                      <Input
-                                        className="h-8"
-                                        placeholder="optional"
-                                        value={adjustNote[s.id] ?? ""}
-                                        onChange={(e) => setAdjustNote({ ...adjustNote, [s.id]: e.target.value })}
-                                      />
-                                    </div>
-                                    <Button size="sm" onClick={() => requestAdjust(s, 1)}>Lift +</Button>
-                                    <Button size="sm" variant="outline" onClick={() => requestAdjust(s, -1)}>Unlift −</Button>
+                              <div>
+                                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Sauda Qty</div>
+                                <div className="font-mono font-medium">{totalQty}</div>
+                              </div>
+                              <div>
+                                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Lifted</div>
+                                <div className="font-mono font-medium text-emerald-600 dark:text-emerald-400">{lifted}</div>
+                              </div>
+                              <div>
+                                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Pending</div>
+                                <div className="font-mono font-semibold text-primary">{pending}</div>
+                              </div>
+                            </div>
+
+                            {totalQty > 0 && (
+                              <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                                <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+                              </div>
+                            )}
+
+                            {s.notes && (
+                              <div className="text-xs text-muted-foreground italic">"{s.notes}"</div>
+                            )}
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row gap-1 shrink-0">
+                            <Button size="sm" variant="outline" onClick={() => setEditing(s)}>Modify</Button>
+                            <Button size="sm" variant={done ? "outline" : "default"} onClick={() => toggleDone.mutate(s)}>
+                              {done ? "Reopen" : "Done"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              disabled={del.isPending}
+                              onClick={() => { if (confirm(`Delete sauda for ${s.party_name}?`)) del.mutate(s.id); }}
+                            >
+                              Delete
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {isOpen && (
+                        <div className="bg-muted/20 border-t px-4 py-3 space-y-3">
+                          <div className="flex items-end gap-2 flex-wrap">
+                            <div className="flex-1 min-w-[100px]">
+                              <Label className="text-xs">Adjust Qty</Label>
+                              <Input
+                                className="h-9"
+                                type="number"
+                                placeholder="e.g. 5"
+                                value={adjustDelta[s.id] ?? ""}
+                                onChange={(e) => setAdjustDelta({ ...adjustDelta, [s.id]: e.target.value })}
+                              />
+                            </div>
+                            <div className="flex-[2] min-w-[160px]">
+                              <Label className="text-xs">Note</Label>
+                              <Input
+                                className="h-9"
+                                placeholder="optional"
+                                value={adjustNote[s.id] ?? ""}
+                                onChange={(e) => setAdjustNote({ ...adjustNote, [s.id]: e.target.value })}
+                              />
+                            </div>
+                            <Button size="sm" onClick={() => requestAdjust(s, 1)}>Lift +</Button>
+                            <Button size="sm" variant="outline" onClick={() => requestAdjust(s, -1)}>Unlift −</Button>
+                          </div>
+
+                          <div>
+                            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Uplift History</div>
+                            {ups.length ? (
+                              <div className="rounded-md border bg-background divide-y">
+                                {ups.map((u: any) => (
+                                  <div key={u.id} className="flex items-center gap-3 px-3 py-1.5 text-xs">
+                                    <span className="text-muted-foreground whitespace-nowrap w-36">{new Date(u.created_at).toLocaleString()}</span>
+                                    <Badge variant={u.kind === "bill" ? "default" : "secondary"} className="text-[10px]">{u.kind}</Badge>
+                                    <span className={`font-mono font-semibold ml-auto ${Number(u.qty) < 0 ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}>
+                                      {Number(u.qty) > 0 ? "+" : ""}{u.qty}
+                                    </span>
+                                    {u.note && <span className="text-muted-foreground truncate max-w-[180px]">{u.note}</span>}
                                   </div>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-muted-foreground italic">No uplifts yet.</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </CardContent>
             </Card>
           );
