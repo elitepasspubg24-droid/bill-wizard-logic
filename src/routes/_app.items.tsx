@@ -121,6 +121,35 @@ function ItemsPage() {
           </CardContent>
         </Card>
       ))}
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="icon"
+            className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
+            aria-label="Jump to category"
+          >
+            <List className="h-6 w-6" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" side="top" className="max-h-96 overflow-y-auto w-64">
+          <DropdownMenuLabel>Jump to category</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {grouped.map(({ section, factory }) => (
+            <DropdownMenuItem
+              key={section.id}
+              onSelect={() => {
+                document.getElementById(`section-${section.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+            >
+              <div className="flex flex-col">
+                <span className="font-medium">{section.name}</span>
+                <span className="text-xs text-muted-foreground">{factory?.name}</span>
+              </div>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
