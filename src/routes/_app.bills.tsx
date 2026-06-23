@@ -127,24 +127,17 @@ function EditBillDialog({
                     <tr key={bi.id} className="border-b">
                       <td className="p-2 text-muted-foreground">{bi.raw_name}</td>
                       <td className="p-2">
-                        <Select
-                          value={bi.item_id ?? "none"}
-                          onValueChange={(v) => {
+                        <ItemPicker
+                          items={items}
+                          sections={sections}
+                          value={bi.item_id}
+                          onChange={(id) => {
                             const updated = [...billItems];
-                            updated[i] = { ...updated[i], item_id: v === "none" ? null : v };
+                            updated[i] = { ...updated[i], item_id: id };
                             setBillItems(updated);
                           }}
-                        >
-                          <SelectTrigger className="w-48">
-                            <SelectValue placeholder="Unmatched" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">— skip —</SelectItem>
-                            {items.map((opt) => (
-                              <SelectItem key={opt.id} value={opt.id}>{opt.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          width="w-56"
+                        />
                       </td>
                       <td className="p-2">
                         <Input
