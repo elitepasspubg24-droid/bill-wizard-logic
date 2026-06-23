@@ -111,11 +111,15 @@ function SectionRow({ section, factories, onSaved }: any) {
     onSuccess: () => { toast.success("Saved"); onSaved(); },
     onError: (e: any) => toast.error(e.message),
   });
+  const todayBasic = Number(factory?.basic_rate ?? 0);
+  const todayRate = todayBasic + (Number(adder) || 0);
   return (
     <tr className="border-b">
       <td className="p-2 font-medium">{section.name}</td>
       <td className="p-2 text-muted-foreground">{factory?.name ?? "—"}</td>
+      <td className="p-2 font-mono text-muted-foreground">{todayBasic.toFixed(0)}</td>
       <td className="p-2"><Input className="w-24" type="number" value={adder} onChange={(e) => setAdder(e.target.value)} /></td>
+      <td className="p-2 font-mono font-semibold text-primary">{todayRate.toFixed(0)}</td>
       <td className="p-2"><Input className="w-24" type="number" value={sb} onChange={(e) => setSb(e.target.value)} /></td>
       <td className="p-2"><Input className="w-24" type="number" value={pb} onChange={(e) => setPb(e.target.value)} /></td>
       <td className="p-2"><Button size="sm" onClick={() => mut.mutate()} disabled={mut.isPending}>Save</Button></td>
