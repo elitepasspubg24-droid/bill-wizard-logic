@@ -465,20 +465,15 @@ function BillsPage() {
                       <tr key={i} className="border-b">
                         <td className="p-2">{it.raw_name}</td>
                         <td className="p-2">
-                          <Select
-                            value={matches[i] ?? "none"}
-                            onValueChange={(v) => {
-                              const n = [...matches]; n[i] = v === "none" ? null : v; setMatches(n);
+                          <ItemPicker
+                            items={items.data ?? []}
+                            sections={sections.data ?? []}
+                            value={matches[i]}
+                            onChange={(id) => {
+                              const n = [...matches]; n[i] = id; setMatches(n);
                             }}
-                          >
-                            <SelectTrigger className="w-64"><SelectValue placeholder="Unmatched" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">— skip —</SelectItem>
-                              {items.data?.map((opt) => (
-                                <SelectItem key={opt.id} value={opt.id}>{opt.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            width="w-72"
+                          />
                         </td>
                         <td className="p-2">
                           <Input type="number" value={it.qty} onChange={(e) => {
